@@ -1,0 +1,761 @@
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+import matplotlib.pyplot as plt
+import cv2
+import os
+import glob
+
+def preprocess_image(image_path):
+    image = cv2.imread(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image = cv2.resize(image, (224, 224))
+    image = image.astype(np.float32) / 255.0
+    return image
+
+
+def load_dataset(dataset_path):
+    train_path = os.path.join(dataset_path, 'train')
+    val_path = os.path.join(dataset_path, 'val')
+    test_path = os.path.join(dataset_path, 'test')
+    
+    classes = os.listdir(train_path)
+    num_classes = len(classes)
+    
+    train_images = []
+    train_labels = []
+    
+    for i, class_name in enumerate(classes):
+        class_path = os.path.join(train_path, class_name)
+        for image_path in glob.glob(os.path.join(class_path, '*')):
+            image = preprocess_image(image_path)
+            train_images.append(image)
+            train_labels.append(i)
+    
+    val_images = []
+    val_labels = []
+    
+    for i, class_name in enumerate(classes):
+        class_path = os.path.join(val_path, class_name)
+        for image_path in glob.glob(os.path.join(class_path, '*')):
+            image = preprocess_image(image_path)
+            val_images.append(image)
+            val_labels.append(i)
+    
+    train_images = np.array(train_images)
+    train_labels = tf.keras.utils.to_categorical(train_labels, num_classes)
+    val_images = np.array(val_images)
+    val_labels = tf.keras.utils.to_categorical(val_labels, num_classes)
+    
+    return train_images, train_labels, val_images, val_labels, classes, num_classes    
+
+
+train_images, train_labels, val_images, val_labels, classes, num_classes = load_dataset('dataset')
+
+
+
+base_model = MobileNetV2(input_shape=(224, 224, 3), include_top=False, weights='imagenet')
+base_model.trainable = False
+
+model = keras.Sequential([
+    base_model,
+    layers.GlobalAveragePooling2D(),
+    layers.Dense(256, activation='relu'),
+    layers.Dense(num_classes, activation='softmax')
+])
+
+
+
+model.compile(
+    optimizer='adam',
+    loss='categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+
+
+history = model.fit(
+    train_images, train_labels,
+    validation_data=(val_images, val_labels),
+    epochs=10,
+    batch_size=32
+)
+
+
+
+
+
+plt.figure(figsize=(12, 4))
+
+plt.subplot(1, 2, 1)
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.title('Model Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.title('Model Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+
+model.save('modelo.h5')
+
+
+
+def predecir_imagen(ruta_imagen):
+    modelo = tf.keras.models.load_model('modelo.h5')
+    
+    image = cv2.imread(ruta_imagen)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image = cv2.resize(image, (224, 224))
+    image = image.astype(np.float32) / 255.0
+    image = np.expand_dims(image, axis=0)
+    
+    predictions = modelo.predict(image)
+    predicted_class = np.argmax(predictions[0])
+    confidence = float(predictions[0][predicted_class])
+    
+    return classes[predicted_class], confidence * 100
+
+
+
+
+with open('classes.txt', 'w') as f:
+    for class_name in classes:
+        f.write(class_name + '\n')
+
+
+
+
+
+
+
+
+
+
+backend: 
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import tensorflow as tf
+import numpy as np
+import cv2
+import io
+from PIL import Image
+import uvicorn
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+model = None
+classes = []
+
+nutricion = {
+    "manzana": {"calorias": 52, "carbs": 14, "proteina": 0.3, "grasa": 0.2},
+    "banana": {"calorias": 89, "carbs": 23, "proteina": 1.1, "grasa": 0.3},
+    "pan": {"calorias": 265, "carbs": 49, "proteina": 9, "grasa": 3.2},
+    "pollo": {"calorias": 239, "carbs": 0, "proteina": 27, "grasa": 14},
+    "arroz": {"calorias": 130, "carbs": 28, "proteina": 2.7, "grasa": 0.3},
+    "tomate": {"calorias": 18, "carbs": 3.9, "proteina": 0.9, "grasa": 0.2},
+    "lechuga": {"calorias": 15, "carbs": 2.9, "proteina": 1.4, "grasa": 0.2},
+    "carne": {"calorias": 250, "carbs": 0, "proteina": 26, "grasa": 15},
+    "pescado": {"calorias": 206, "carbs": 0, "proteina": 22, "grasa": 12},
+    "huevo": {"calorias": 155, "carbs": 1.1, "proteina": 13, "grasa": 11}
+}
+
+def load_model():
+    global model, classes
+    try:
+        model = tf.keras.models.load_model('modelo.h5')
+        with open('classes.txt', 'r') as f:
+            classes = [line.strip() for line in f.readlines()]
+    except:
+        classes = ["manzana", "banana", "pan", "pollo", "arroz"]
+
+def preprocess_image(image_bytes):
+    image = Image.open(io.BytesIO(image_bytes))
+    image = image.convert('RGB')
+    image_array = np.array(image)
+    image_array = cv2.resize(image_array, (224, 224))
+    image_array = image_array.astype(np.float32) / 255.0
+    image_array = np.expand_dims(image_array, axis=0)
+    return image_array
+
+@app.on_event("startup")
+async def startup_event():
+    load_model()
+
+class ChatMessage(BaseModel):
+    message: str
+
+@app.post("/predict")
+async def predict_image(file: UploadFile = File(...)):
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
+    try:
+        image_bytes = await file.read()
+        processed_image = preprocess_image(image_bytes)
+        
+        if model is None:
+            return {"clase": "modelo_no_cargado", "probabilidad": 0.0}
+        
+        predictions = model.predict(processed_image)
+        predicted_class = np.argmax(predictions[0])
+        confidence = float(predictions[0][predicted_class])
+        
+        clase = classes[predicted_class] if predicted_class < len(classes) else "desconocido"
+        
+        return {"clase": clase, "probabilidad": round(confidence * 100, 2)}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/chat")
+async def chat_nutrition(message: ChatMessage):
+    user_message = message.message.lower()
+    
+    found_foods = []
+    for food in nutricion.keys():
+        if food in user_message:
+            found_foods.append(food)
+    
+    if found_foods:
+        response = "Información nutricional encontrada:\n\n"
+        for food in found_foods:
+            info = nutricion[food]
+            response += f"🍎 {food.capitalize()}:\n"
+            response += f"• Calorías: {info['calorias']} kcal\n"
+            response += f"• Carbohidratos: {info['carbs']}g\n"
+            response += f"• Proteína: {info['proteina']}g\n"
+            response += f"• Grasa: {info['grasa']}g\n\n"
+    else:
+        response = "Lo siento, no encontré información nutricional específica en tu mensaje. Puedo ayudarte con información sobre: manzana, banana, pan, pollo, arroz, tomate, lechuga, carne, pescado, huevo."
+    
+    return {"response": response}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+
+
+front: 
+import React, { useState } from 'react'
+import { predictImage } from '../services/api'
+
+function ImageClassifier() {
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      setSelectedFile(file)
+      const url = URL.createObjectURL(file)
+      setPreviewUrl(url)
+      setResult(null)
+    }
+  }
+
+  const handleClassify = async () => {
+    if (!selectedFile) return
+
+    setLoading(true)
+    try {
+      const prediction = await predictImage(selectedFile)
+      setResult(prediction)
+    } catch (error) {
+      setResult({ error: 'Error al clasificar la imagen' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="classifier-section">
+      <h2>Clasificador de Imágenes</h2>
+      
+      <div className="file-input-container">
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleFileSelect}
+          className="file-input"
+        />
+      </div>
+
+      {previewUrl && (
+        <div className="image-preview">
+          <img src={previewUrl} alt="Preview" className="preview-image" />
+        </div>
+      )}
+
+      <button
+        onClick={handleClassify}
+        disabled={!selectedFile || loading}
+        className="classify-button"
+      >
+        {loading ? 'Clasificando...' : 'Clasificar'}
+      </button>
+
+      {result && (
+        <div className="result-container">
+          {result.error ? (
+            <p className="error">{result.error}</p>
+          ) : (
+            <div className="result">
+              <h3>Resultado:</h3>
+              <p><strong>Clase:</strong> {result.clase}</p>
+              <p><strong>Probabilidad:</strong> {result.probabilidad}%</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default ImageClassifier
+
+
+
+import React, { useState } from 'react'
+import { sendChatMessage } from '../services/api'
+
+function NutritionChatbot() {
+  const [message, setMessage] = useState('')
+  const [messages, setMessages] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const handleSendMessage = async () => {
+    if (!message.trim()) return
+
+    const userMessage = { type: 'user', content: message }
+    setMessages(prev => [...prev, userMessage])
+    setMessage('')
+    setLoading(true)
+
+    try {
+      const response = await sendChatMessage(message)
+      const botMessage = { type: 'bot', content: response.response }
+      setMessages(prev => [...prev, botMessage])
+    } catch (error) {
+      const errorMessage = { type: 'bot', content: 'Error al procesar el mensaje' }
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      handleSendMessage()
+    }
+  }
+
+  return (
+    <div className="chatbot-section">
+      <h2>Chatbot Nutricional</h2>
+      
+      <div className="messages-container">
+        {messages.map((msg, index) => (
+          <div key={index} className={`message ${msg.type}`}>
+            <div className="message-content">
+              {msg.content.split('\n').map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="message bot">
+            <div className="message-content">Escribiendo...</div>
+          </div>
+        )}
+      </div>
+
+      <div className="input-container">
+        <input
+          type="text"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Pregunta sobre información nutricional..."
+          className="message-input"
+        />
+        <button
+          onClick={handleSendMessage}
+          disabled={!message.trim() || loading}
+          className="send-button"
+        >
+          Enviar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export default NutritionChatbot
+
+
+
+const API_BASE_URL = 'http://localhost:8000'
+
+export const predictImage = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_BASE_URL}/predict`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error('Error en la predicción')
+  }
+
+  return response.json()
+}
+
+export const sendChatMessage = async (message) => {
+  const response = await fetch(`${API_BASE_URL}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  })
+
+  if (!response.ok) {
+    throw new Error('Error en el chat')
+  }
+
+  return response.json()
+}
+
+
+
+
+.App {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+  margin-bottom: 30px;
+  border-radius: 10px;
+}
+
+.App-header h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.App-main {
+  padding: 0 20px;
+}
+
+.sections-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  align-items: start;
+}
+
+.classifier-section,
+.chatbot-section {
+  background-color: #f5f5f5;
+  color: #333;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.classifier-section h2,
+.chatbot-section h2 {
+  margin-bottom: 20px;
+  color: #2c3e50;
+  font-size: 1.5rem;
+}
+
+.file-input-container {
+  margin-bottom: 20px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 10px;
+  border: 2px dashed #3498db;
+  border-radius: 5px;
+  background-color: white;
+  cursor: pointer;
+}
+
+.image-preview {
+  margin: 20px 0;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.classify-button,
+.send-button {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s;
+}
+
+.classify-button:hover,
+.send-button:hover {
+  background-color: #2980b9;
+}
+
+.classify-button:disabled,
+.send-button:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.result-container {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: white;
+  border-radius: 5px;
+  border-left: 4px solid #27ae60;
+}
+
+.result h3 {
+  color: #27ae60;
+  margin-bottom: 10px;
+}
+
+.result p {
+  margin: 5px 0;
+  font-size: 16px;
+}
+
+.error {
+  color: #e74c3c;
+  font-weight: bold;
+}
+
+.messages-container {
+  height: 400px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  margin-bottom: 15px;
+  background-color: white;
+}
+
+.message {
+  margin-bottom: 15px;
+  display: flex;
+}
+
+.message.user {
+  justify-content: flex-end;
+}
+
+.message.bot {
+  justify-content: flex-start;
+}
+
+.message-content {
+  max-width: 80%;
+  padding: 10px 15px;
+  border-radius: 15px;
+  word-wrap: break-word;
+}
+
+.message.user .message-content {
+  background-color: #3498db;
+  color: white;
+}
+
+.message.bot .message-content {
+  background-color: #ecf0f1;
+  color: #2c3e50;
+}
+
+.input-container {
+  display: flex;
+  gap: 10px;
+}
+
+.message-input {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 16px;
+}
+
+.message-input:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+@media (max-width: 768px) {
+  .sections-container {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .App-header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .classifier-section,
+  .chatbot-section {
+    padding: 20px;
+  }
+}
+
+
+
+import React from 'react'
+import ImageClassifier from './components/ImageClassifier'
+import NutritionChatbot from './components/NutritionChatbot'
+import './App.css'
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>Clasificación de Alimentos para Asistentes de Nutrición</h1>
+      </header>
+      <main className="App-main">
+        <div className="sections-container">
+          <ImageClassifier />
+          <NutritionChatbot />
+        </div>
+      </main>
+    </div>
+  )
+}
+
+export default App
+
+
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.jsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+
+
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clasificación de Alimentos</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
