@@ -1,6 +1,7 @@
 import React from 'react'
 import ImageClassifier from './components/ImageClassifier'
 import NutritionChatbot from './components/NutritionChatbot'
+import GeminiChat from './components/GeminiChat'
 import './App.css'
 
 function App() {
@@ -15,6 +16,9 @@ function App() {
           <NutritionChatbot />
         </div>
       </main>
+      
+      {/* Botón flotante de Gemini */}
+      <GeminiChat />
     </div>
   )
 }

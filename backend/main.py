@@ -22,26 +22,36 @@ model = None
 classes = []
 
 nutricion = {
-    "manzana": {"calorias": 52, "carbs": 14, "proteina": 0.3, "grasa": 0.2},
-    "banana": {"calorias": 89, "carbs": 23, "proteina": 1.1, "grasa": 0.3},
-    "pan": {"calorias": 265, "carbs": 49, "proteina": 9, "grasa": 3.2},
-    "pollo": {"calorias": 239, "carbs": 0, "proteina": 27, "grasa": 14},
-    "arroz": {"calorias": 130, "carbs": 28, "proteina": 2.7, "grasa": 0.3},
-    "tomate": {"calorias": 18, "carbs": 3.9, "proteina": 0.9, "grasa": 0.2},
-    "lechuga": {"calorias": 15, "carbs": 2.9, "proteina": 1.4, "grasa": 0.2},
-    "carne": {"calorias": 250, "carbs": 0, "proteina": 26, "grasa": 15},
-    "pescado": {"calorias": 206, "carbs": 0, "proteina": 22, "grasa": 12},
-    "huevo": {"calorias": 155, "carbs": 1.1, "proteina": 13, "grasa": 11}
+    "Apple 10": {"calorias": 52, "carbs": 14, "proteina": 0.3, "grasa": 0.2, "fibra": 2.4, "vitamina_c": 4.6},
+    "Banana 1": {"calorias": 89, "carbs": 23, "proteina": 1.1, "grasa": 0.3, "fibra": 2.6, "potasio": 358},
+    "Orange 1": {"calorias": 47, "carbs": 12, "proteina": 0.9, "grasa": 0.1, "fibra": 2.4, "vitamina_c": 53.2},
+    "Tomato 1": {"calorias": 18, "carbs": 3.9, "proteina": 0.9, "grasa": 0.2, "fibra": 1.2, "licopeno": "alto"},
+    "Carrot 1": {"calorias": 41, "carbs": 10, "proteina": 0.9, "grasa": 0.2, "fibra": 2.8, "vitamina_a": "muy_alto"},
+    "Cucumber 1": {"calorias": 16, "carbs": 4, "proteina": 0.7, "grasa": 0.1, "fibra": 0.5, "agua": "95%"},
+    "Onion 2": {"calorias": 40, "carbs": 9, "proteina": 1.1, "grasa": 0.1, "fibra": 1.7, "antioxidantes": "alto"},
+    "Peach 1": {"calorias": 39, "carbs": 10, "proteina": 0.9, "grasa": 0.3, "fibra": 1.5, "vitamina_a": "alto"},
+    "Pear 1": {"calorias": 57, "carbs": 15, "proteina": 0.4, "grasa": 0.1, "fibra": 3.1, "vitamina_k": "alto"},
+    "Cherry 1": {"calorias": 63, "carbs": 16, "proteina": 1.1, "grasa": 0.2, "fibra": 2.1, "antioxidantes": "muy_alto"},
+    "Grape Blue 1": {"calorias": 62, "carbs": 16, "proteina": 0.6, "grasa": 0.2, "fibra": 0.9, "resveratrol": "alto"},
+    "Pepper Green 1": {"calorias": 31, "carbs": 7, "proteina": 1, "grasa": 0.3, "fibra": 2.5, "vitamina_c": "muy_alto"},
+    "Potato Red 1": {"calorias": 77, "carbs": 17, "proteina": 2, "grasa": 0.1, "fibra": 2.2, "potasio": "alto"},
+    "Avocado 1": {"calorias": 160, "carbs": 9, "proteina": 2, "grasa": 15, "fibra": 7, "grasas_saludables": "muy_alto"},
+    "Mango 1": {"calorias": 60, "carbs": 15, "proteina": 0.8, "grasa": 0.4, "fibra": 1.6, "vitamina_a": "muy_alto"},
+    "Strawberry 1": {"calorias": 32, "carbs": 8, "proteina": 0.7, "grasa": 0.3, "fibra": 2, "vitamina_c": "muy_alto"},
+    "Lemon 1": {"calorias": 17, "carbs": 5, "proteina": 0.6, "grasa": 0.2, "fibra": 1.6, "vitamina_c": "extremo"},
+    "Watermelon 1": {"calorias": 30, "carbs": 8, "proteina": 0.6, "grasa": 0.2, "fibra": 0.4, "agua": "92%"},
+    "Corn 1": {"calorias": 86, "carbs": 19, "proteina": 3.3, "grasa": 1.4, "fibra": 2.7, "antioxidantes": "alto"},
+    "Eggplant 1": {"calorias": 25, "carbs": 6, "proteina": 1, "grasa": 0.2, "fibra": 3, "antioxidantes": "alto"}
 }
 
 def load_model():
     global model, classes
     try:
-        model = tf.keras.models.load_model('modelo.h5')
+        model = tf.keras.models.load_model('best_model_20_clases.h5')
         with open('classes.txt', 'r') as f:
             classes = [line.strip() for line in f.readlines()]
     except:
-        classes = ["manzana", "banana", "pan", "pollo", "arroz"]
+        classes = ["Apple 10", "Banana 1", "Orange 1", "Tomato 1", "Carrot 1"]
 
 def preprocess_image(image_bytes):
     image = Image.open(io.BytesIO(image_bytes))
@@ -85,23 +95,27 @@ async def predict_image(file: UploadFile = File(...)):
 @app.post("/chat")
 async def chat_nutrition(message: ChatMessage):
     user_message = message.message.lower()
-    
     found_foods = []
+    
+    # Buscar alimentos mencionados en el mensaje
     for food in nutricion.keys():
-        if food in user_message:
+        if food.lower() in user_message:
             found_foods.append(food)
     
     if found_foods:
         response = "Información nutricional encontrada:\n\n"
         for food in found_foods:
             info = nutricion[food]
-            response += f"🍎 {food.capitalize()}:\n"
+            response += f"🍎 {food}:\n"
             response += f"• Calorías: {info['calorias']} kcal\n"
             response += f"• Carbohidratos: {info['carbs']}g\n"
             response += f"• Proteína: {info['proteina']}g\n"
-            response += f"• Grasa: {info['grasa']}g\n\n"
+            response += f"• Grasa: {info['grasa']}g\n"
+            if 'fibra' in info:
+                response += f"• Fibra: {info['fibra']}g\n"
+            response += "\n"
     else:
-        response = "Lo siento, no encontré información nutricional específica en tu mensaje. Puedo ayudarte con información sobre: manzana, banana, pan, pollo, arroz, tomate, lechuga, carne, pescado, huevo."
+        response = "Lo siento, no encontré información nutricional específica en tu mensaje. Puedo ayudarte con información sobre: Apple, Banana, Orange, Tomato, Carrot, Cucumber, Onion, Peach, Pear, Cherry, Grape, Pepper, Potato, Avocado, Mango, Strawberry, Lemon, Watermelon, Corn, Eggplant."
     
     return {"response": response}
 

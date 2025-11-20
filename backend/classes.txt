@@ -1,0 +1,20 @@
+Apple 10
+Banana 1
+Orange 1
+Tomato 1
+Carrot 1
+Cucumber 1
+Onion 2
+Peach 1
+Pear 1
+Cherry 1
+Grape Blue 1
+Pepper Green 1
+Potato Red 1
+Avocado 1
+Mango 1
+Strawberry 1
+Lemon 1
+Watermelon 1
+Corn 1
+Eggplant 1

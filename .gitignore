@@ -1,17 +1,18 @@
-# Datasets - NO subir
+# Datasets - NO subir (muy pesados)
 dataset/
 dataset_simple/
-*.h5
-*.hdf5
 
-# Modelos entrenados
+# Modelos antiguos (NO necesarios)
 modelo.h5
 modelo_optimizado.h5
 modelo_simple.h5
 best_model.h5
 best_model_simple.h5
-classes.txt
 classes_simple.txt
+
+# PERMITIR archivos esenciales del proyecto:
+# best_model_20_clases.h5 - Modelo principal (necesario)
+# classes.txt - Lista de clases (necesario)
 
 # Entorno virtual
 .venv/
